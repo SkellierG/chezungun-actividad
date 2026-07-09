@@ -1,8 +1,8 @@
 export const StorageKeys = {
-    USER: "user",
-    SESSION: "session",
-    PROFILE: "profile",
-    CODE: "code",
+	USER: "user",
+	SESSION: "session",
+	PROFILE: "profile",
+    CODE: "code",   
 } as const;
 
 export type StorageKey = (typeof StorageKeys)[keyof typeof StorageKeys];
