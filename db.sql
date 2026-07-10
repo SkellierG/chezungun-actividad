@@ -1,56 +1,51 @@
-drop table code_players;
-drop table player_parties;
-drop table teams cascade;
-drop table parties cascade;
-drop table players cascade;
-
-
-
--- 1. Asegurar que las tablas previas existen o adaptarlas (Modificación/Creación)
-
--- Tabla de Partities (Salas de Juego)
-CREATE TABLE IF NOT EXISTS parties (
+-- 1. Tabla de Parties (Salas de Juego)
+CREATE TABLE parties (
     id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
     code VARCHAR(10) UNIQUE NOT NULL,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
--- Tabla de Equipos (Cada equipo pertenece a una Party específica)
+-- 2. Tabla de Equipos (Cada equipo pertenece a una Party y ahora incluye COLOR)
 CREATE TABLE teams (
     id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
     party_id UUID REFERENCES parties(id) ON DELETE CASCADE NOT NULL,
     name VARCHAR(50) NOT NULL,
-    score INT DEFAULT 0 NOT NULL, -- Puntaje del Equipo
+    color VARCHAR(7) DEFAULT '#38bdf8' NOT NULL, -- Guardará códigos Hexadecimales (Ej: #FF5733 o #4ade80)
+    score INT DEFAULT 0 NOT NULL, -- Puntaje acumulado del equipo
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-    -- Evita tener dos equipos con el mismo nombre en la misma sala
     UNIQUE (party_id, name) 
 );
 
--- Tabla de Jugadores (Tu sistema ad-hoc usando el código único de sesión)
-CREATE TABLE IF NOT EXISTS players (
+-- 3. Tabla de Jugadores Base
+CREATE TABLE players (
     id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
     name VARCHAR(100) NOT NULL,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
--- Esta tabla une el código guardado en LocalStorage con un id_player real
-create table code_players (
-  id uuid default gen_random_uuid() primary key,
-  code text unique not null, -- El código único que se guardará en localStorage
-  player_id uuid references players(id) on delete cascade unique,
-  created_at timestamp with time zone default timezone('utc'::text, now()) not null
+-- 4. Tabla de Sesiones (Une el localStorage con el jugador real)
+CREATE TABLE code_players (
+    id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+    code TEXT UNIQUE NOT NULL, 
+    player_id UUID REFERENCES players(id) ON DELETE CASCADE UNIQUE,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
--- Tabla de Relación/Sesión: Une Jugador, Party, Equipo y su Rol/Puntaje individual
--- Esta tabla resuelve "Miembros", "Roles", "Puntaje Individual" y la "Lista General"
+-- Reemplaza solo esta tabla en tu script para actualizar los roles
 CREATE TABLE player_parties (
     id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
     player_id UUID REFERENCES players(id) ON DELETE CASCADE NOT NULL,
     party_id UUID REFERENCES parties(id) ON DELETE CASCADE NOT NULL,
-    team_id UUID REFERENCES teams(id) ON DELETE SET NULL, -- Puede empezar sin equipo
-    role VARCHAR(50) DEFAULT 'player' NOT NULL, -- Ej: 'leader', 'writer', 'guesser', 'player'
-    individual_score INT DEFAULT 0 NOT NULL, -- Puntaje individual de cada persona
+    team_id UUID REFERENCES teams(id) ON DELETE SET NULL, 
+    
+    -- CAMBIO: El rol por defecto ahora es 'jugador'
+    role VARCHAR(20) DEFAULT 'jugador' NOT NULL, 
+    
+    individual_score INT DEFAULT 0 NOT NULL, 
     joined_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-    -- Un jugador solo puede estar activo en una party a la vez en este registro
-    UNIQUE (player_id, party_id)
+    
+    UNIQUE (player_id),
+    
+    -- CAMBIO: Se añade 'jugador' a la lista de roles permitidos por el servidor
+    CONSTRAINT chk_allowed_roles CHECK (role IN ('lider', 'fraile', 'diplomatico', 'jugador'))
 );

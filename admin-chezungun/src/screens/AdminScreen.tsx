@@ -1,35 +1,29 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '../utils/supabase'
-
-// Interfaces estrictas para manejar todo el árbol relacional mapeado desde Supabase
-interface AdminPlayerParties {
-  role: string | null;
-  individual_score: number;
-  players: {
-    id: string;
-    name: string;
-  } | null;
-  teams: {
-    id: string;
-    name: string;
-    score: number;
-  } | null;
-}
-
-interface AdminParty {
-  id: string;
-  code: string;
-  created_at: string;
-  player_parties: AdminPlayerParties | AdminPlayerParties[] | null;
-}
+import type { AdminParty, GlobalPlayer } from '../types/db'
+import PartiesTab from './PartiesTab'
+import PlayersTab from './PlayersTab'
 
 export default function AdminScreen() {
+  // Estados de salas y carga
   const [parties, setParties] = useState<AdminParty[]>([])
   const [loading, setLoading] = useState(true)
   const [newPartyCode, setNewPartyCode] = useState('')
   const [isSubmitting, setIsSubmitting] = useState(false)
 
-  // Cargar salas y todos sus miembros con roles, puntajes y equipos
+  // Gestión de Jugadores y Pestañas
+  const [activeTab, setActiveTab] = useState<'parties' | 'players'>('parties')
+  const [allPlayers, setAllPlayers] = useState<GlobalPlayer[]>([])
+  const [loadingPlayers, setLoadingPlayers] = useState(false)
+  const [selectedPartyForPlayer, setSelectedPartyForPlayer] = useState<Record<string, string>>({})
+
+  // Estados para control de Edición Inline
+  const [editingPlayerId, setEditingPlayerId] = useState<string | null>(null)
+  const [editNameInput, setEditNameInput] = useState('')
+  const [editRoleInput, setEditRoleInput] = useState('')
+  const [editTeamInput, setEditTeamInput] = useState('')
+
+  // 1. Traer salas con sus equipos
   const fetchAllParties = async () => {
     setLoading(true)
     try {
@@ -39,18 +33,12 @@ export default function AdminScreen() {
           id,
           code,
           created_at,
+          teams ( id, name, score ),
           player_parties (
             role,
             individual_score,
-            players (
-              id,
-              name
-            ),
-            teams (
-              id,
-              name,
-              score
-            )
+            players (id, name),
+            teams (id, name, score)
           )
         `)
         .order('created_at', { ascending: false })
@@ -65,36 +53,64 @@ export default function AdminScreen() {
     }
   }
 
-  useEffect(() => {
-    fetchAllParties()
-  }, [])
+  // 2. Traer todos los jugadores globales
+  const fetchAllPlayers = async () => {
+    setLoadingPlayers(true)
+    try {
+      const { data, error } = await supabase
+        .from('players')
+        .select(`
+          id,
+          name,
+          created_at,
+          code_players ( code ),
+          player_parties (
+            party_id,
+            role,
+            team_id,
+            parties ( code ),
+            teams ( id, name )
+          )
+        `)
+        .order('created_at', { ascending: false })
 
-  // Crear una nueva party de forma manual o aleatoria
+      if (error) throw error
+      setAllPlayers(data || [])
+    } catch (error) {
+      console.error('Error cargando jugadores globales:', error)
+      alert('Error al traer la lista global de jugadores.')
+    } finally {
+      setLoadingPlayers(false)
+    }
+  }
+
+  useEffect(() => {
+    if (activeTab === 'parties') {
+      fetchAllParties()
+    } else {
+      fetchAllPlayers()
+      fetchAllParties()
+    }
+  }, [activeTab])
+
+  // Crear sala
   const handleCreateParty = async (e: React.FormEvent) => {
     e.preventDefault()
     let code = newPartyCode.trim().toUpperCase()
-    
-    // Si dejan el input vacío, generamos un código corto aleatorio (ej: RM42B)
     if (!code) {
       code = 'ROOM_' + Math.random().toString(36).substring(2, 7).toUpperCase()
     }
 
-    setIsSubmitting(false)
+    setIsSubmitting(true)
     try {
-      const { error } = await supabase
-        .from('parties')
-        .insert([{ code }])
-
+      const { error } = await supabase.from('parties').insert([{ code }])
       if (error) {
-        if (error.code === '23505') { // Código de duplicado en Postgres
-          return alert('Ese código de Party ya existe. Intenta con otro.')
-        }
+        if (error.code === '23505') return alert('Ese código de Party ya existe.')
         throw error
       }
-
       setNewPartyCode('')
       alert(`¡Sala "${code}" creada con éxito!`)
-      fetchAllParties() // Recargar lista
+      fetchAllParties() 
     } catch (error) {
       console.error(error)
       alert('No se pudo crear la sala.')
@@ -103,112 +119,177 @@ export default function AdminScreen() {
     }
   }
 
+  // Activar el modo edición para una fila específica
+  const startEditing = (player: GlobalPlayer, currentRole: string, currentTeamId: string) => {
+    setEditingPlayerId(player.id)
+    setEditNameInput(player.name)
+    setEditRoleInput(currentRole)
+    setEditTeamInput(currentTeamId)
+  }
+
+  // Guardar cambios inline
+  const handleUpdatePlayer = async (playerId: string, hasActiveParty: boolean) => {
+    if (!editNameInput.trim()) return alert('El nombre no puede estar vacío.')
+
+    try {
+      const { error: playerError } = await supabase
+        .from('players')
+        .update({ name: editNameInput.trim() })
+        .eq('id', playerId)
+
+      if (playerError) throw playerError
+
+      if (hasActiveParty) {
+        const { error: roleError } = await supabase
+          .from('player_parties')
+          .update({ 
+            role: editRoleInput,
+            team_id: editTeamInput || null
+          })
+          .eq('player_id', playerId)
+
+        if (roleError) throw roleError
+      }
+
+      alert('Cambios guardados con éxito.')
+      setEditingPlayerId(null)
+      fetchAllPlayers()
+      fetchAllParties()
+    } catch (error) {
+      console.error(error)
+      alert('Error al intentar guardar las modificaciones del jugador.')
+    }
+  }
+
+  // Eliminar por completo a un jugador
+  const handleDeletePlayer = async (playerId: string) => {
+    if (!confirm('¿Estás seguro de eliminar permanentemente a este jugador? Se borrará su sesión de raíz.')) return
+    try {
+      await supabase.from('player_parties').delete().eq('player_id', playerId)
+      await supabase.from('code_players').delete().eq('player_id', playerId)
+      const { error } = await supabase.from('players').delete().eq('id', playerId)
+      if (error) throw error
+
+      alert('Jugador eliminado con éxito.')
+      fetchAllPlayers()
+    } catch (error) {
+      console.error(error)
+      alert('Error al intentar eliminar al jugador.')
+    }
+  }
+
+  // Echar / Expulsar de la sala
+  const handleKickPlayer = async (playerId: string) => {
+    if (!confirm('¿Quieres expulsar a este jugador de su sala actual?')) return
+    try {
+      const { error } = await supabase.from('player_parties').delete().eq('player_id', playerId)
+      if (error) throw error
+
+      alert('Jugador expulsado de la sala.')
+      if (activeTab === 'players') fetchAllPlayers(); else fetchAllParties();
+    } catch (error) {
+      console.error(error)
+      alert('No se pudo expulsar al jugador.')
+    }
+  }
+
+  // Forzar cambio o unión de sala
+  const handleForceJoinParty = async (playerId: string) => {
+    const targetPartyId = selectedPartyForPlayer[playerId]
+    if (!targetPartyId) return alert('Por favor, selecciona una sala primero.')
+
+    try {
+      await supabase.from('player_parties').delete().eq('player_id', playerId)
+      const { error } = await supabase.from('player_parties').insert([
+        { 
+          player_id: playerId, 
+          party_id: targetPartyId,
+          role: 'Jugador',
+          team_id: null,
+          individual_score: 0 
+        }
+      ])
+      if (error) throw error
+
+      alert('Jugador reubicado con éxito.')
+      fetchAllPlayers()
+    } catch (error) {
+      console.error(error)
+      alert('Error al forzar la unión a la sala.')
+    }
+  }
+
+  const handleCreateTeam = async (partyId: string, teamName: string) => {
+  const { error } = await supabase
+    .from('teams')
+    .insert([{ party_id: partyId, name: teamName, score: 0 }])
+
+  if (error) {
+    alert('Error al fundar el equipo en la base de datos')
+    throw error
+  }
+
+  // Refrescamos las salas de inmediato para pintar el nuevo equipo localmente
+  await fetchAllParties()
+}
+
   return (
     <div style={{ padding: '20px', maxWidth: '1200px', margin: '0 auto', fontFamily: 'sans-serif', color: '#fff' }}>
       <h2>Panel de Administración Global</h2>
       <p style={{ color: '#aaa' }}>Crea salas y monitorea jugadores, equipos y puntajes en tiempo real.</p>
       
+      {/* Pestañas de Navegación */}
+      <div style={{ display: 'flex', gap: '10px', margin: '20px 0' }}>
+        <button 
+          onClick={() => setActiveTab('parties')} 
+          style={{ padding: '10px 20px', background: activeTab === 'parties' ? '#0284c7' : '#333', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer', fontWeight: 'bold' }}
+        >
+          🏰 Salas Activas ({parties.length})
+        </button>
+        <button 
+          onClick={() => setActiveTab('players')} 
+          style={{ padding: '10px 20px', background: activeTab === 'players' ? '#0284c7' : '#333', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer', fontWeight: 'bold' }}
+        >
+          👥 Todos los Jugadores ({allPlayers.length})
+        </button>
+      </div>
+
       <hr style={{ borderColor: '#444', margin: '20px 0' }} />
 
-      {/* SECCIÓN A: CREACIÓN DE PARTIES */}
-      <section style={{ background: '#1e1e1e', padding: '20px', borderRadius: '8px', marginBottom: '30px' }}>
-        <h3>Crear Nueva Sala (Party)</h3>
-        <form onSubmit={handleCreateParty} style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
-          <input
-            type="text"
-            placeholder="Ej: AB12 (Vacío para aleatorio)"
-            value={newPartyCode}
-            onChange={(e) => setNewPartyCode(e.target.value)}
-            style={{ padding: '10px', borderRadius: '4px', border: '1px solid #555', backgroundColor: '#333', color: '#fff', width: '250px' }}
-          />
-          <button 
-            type="submit" 
-            disabled={isSubmitting}
-            style={{ padding: '10px 20px', background: '#0284c7', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer', fontWeight: 'bold' }}
-          >
-            {isSubmitting ? 'Creando...' : 'Crear Sala'}
-          </button>
-        </form>
-      </section>
-
-      {/* SECCIÓN B: MONITOREO DE PARTIES Y MIEMBROS */}
-      <section>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '15px' }}>
-          <h3>Salas Activas ({parties.length})</h3>
-          <button onClick={fetchAllParties} style={{ padding: '6px 12px', background: '#333', border: '1px solid #555', color: '#fff', borderRadius: '4px', cursor: 'pointer' }}>
-            🔄 Actualizar Datos
-          </button>
-        </div>
-
-        {loading ? (
-          <p>Cargando información consolidada...</p>
-        ) : parties.length === 0 ? (
-          <p style={{ color: '#aaa' }}>No hay salas creadas en el servidor actualmente.</p>
-        ) : (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
-            {parties.map((party) => {
-              // Normalizar la relación de player_parties ya que Postgres/Supabase puede devolver objeto o array
-              const rawMembers = party.player_parties
-              const members: AdminPlayerParties[] = Array.isArray(rawMembers)
-                ? rawMembers
-                : rawMembers
-                ? [rawMembers]
-                : []
-
-              return (
-                <div key={party.id} style={{ background: '#1e1e1e', border: '1px solid #333', borderRadius: '8px', padding: '20px' }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid #333', paddingBottom: '10px', marginBottom: '15px' }}>
-                    <span style={{ fontSize: '1.2rem', fontWeight: 'bold', color: '#38bdf8' }}>
-                      Sala Cód: {party.code}
-                    </span>
-                    <span style={{ fontSize: '0.85rem', color: '#777' }}>
-                      Creada: {new Date(party.created_at).toLocaleString()}
-                    </span>
-                  </div>
-
-                  <h4>Jugadores Inscritos ({members.length})</h4>
-                  {members.length === 0 ? (
-                    <p style={{ color: '#777', fontSize: '0.9rem', italic: 'true' }}>Sala vacía sin jugadores aún.</p>
-                  ) : (
-                    <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', marginTop: '10px', fontSize: '0.95rem' }}>
-                      <thead>
-                        <tr style={{ borderBottom: '2px solid #444', color: '#aaa' }}>
-                          <th style={{ padding: '8px' }}>Jugador</th>
-                          <th style={{ padding: '8px' }}>Equipo</th>
-                          <th style={{ padding: '8px' }}>Rol</th>
-                          <th style={{ padding: '8px' }}>Ptos. Indiv.</th>
-                          <th style={{ padding: '8px' }}>Ptos. Equipo</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {members.map((member, index) => (
-                          <tr key={index} style={{ borderBottom: '1px solid #2a2a2a' }}>
-                            <td style={{ padding: '8px', fontWeight: '500' }}>
-                              {member.players?.name || 'Anónimo'}
-                            </td>
-                            <td style={{ padding: '8px', color: member.teams?.name ? '#4ade80' : '#aaa' }}>
-                              {member.teams?.name || 'Ninguno'}
-                            </td>
-                            <td style={{ padding: '8px', color: '#fb923c' }}>
-                              {member.role || 'Sin Rol'}
-                            </td>
-                            <td style={{ padding: '8px', textAlign: 'center' }}>
-                              {member.individual_score}
-                            </td>
-                            <td style={{ padding: '8px', textAlign: 'center', color: '#86efac' }}>
-                              {member.teams?.score !== undefined ? member.teams.score : '-'}
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  )}
-                </div>
-              )
-            })}
-          </div>
-        )}
-      </section>
+      {/* RENDER MODULAR POR PESTAÑAS */}
+      {activeTab === 'parties' ? (
+        <PartiesTab
+          newPartyCode={newPartyCode}
+          setNewPartyCode={setNewPartyCode}
+          isSubmitting={isSubmitting}
+          handleCreateParty={handleCreateParty}
+          fetchAllParties={fetchAllParties}
+          loading={loading}
+          parties={parties}
+          handleKickPlayer={handleKickPlayer} handleCreateTeam={handleCreateTeam}        />
+      ) : (
+        <PlayersTab
+          fetchAllPlayers={fetchAllPlayers}
+          loadingPlayers={loadingPlayers}
+          allPlayers={allPlayers}
+          editingPlayerId={editingPlayerId}
+          setEditingPlayerId={setEditingPlayerId}
+          editNameInput={editNameInput}
+          setEditNameInput={setEditNameInput}
+          editRoleInput={editRoleInput}
+          setEditRoleInput={setEditRoleInput}
+          editTeamInput={editTeamInput}
+          setEditTeamInput={setEditTeamInput}
+          parties={parties}
+          selectedPartyForPlayer={selectedPartyForPlayer}
+          setSelectedPartyForPlayer={setSelectedPartyForPlayer}
+          startEditing={startEditing}
+          handleUpdatePlayer={handleUpdatePlayer}
+          handleDeletePlayer={handleDeletePlayer}
+          handleKickPlayer={handleKickPlayer}
+          handleForceJoinParty={handleForceJoinParty}
+        />
+      )}
     </div>
   )
 }

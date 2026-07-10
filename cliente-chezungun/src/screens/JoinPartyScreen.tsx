@@ -1,3 +1,4 @@
+// skellierg/chezungun-actividad/cliente-chezungun/src/screens/JoinPartyScreen.tsx
 import React, { useState } from 'react'
 import { supabase } from '../utils/supabase'
 import type { PlayerSession } from '../App'
@@ -36,12 +37,16 @@ export default function JoinPartyScreen({ player, setPlayer }: JoinPartyScreenPr
       .insert([{ player_id: player.id, party_id: party.id }])
 
     if (!joinError) {
-      // Seteamos el estado local emulando la respuesta relacional exacta
+      // Seteamos el estado local emulando la respuesta relacional exacta y respetando la interfaz PlayerSession
       setPlayer({
         ...player,
         player_parties: {
           party_id: party.id,
-          parties: { code: party.code }
+          team_id: null,
+          role: 'player', // Valor por defecto en la Base de Datos
+          individual_score: 0, // Valor por defecto en la Base de Datos
+          parties: { code: party.code },
+          teams: null // Inicia sin equipo asignado
         }
       })
     } else {
