@@ -70,7 +70,7 @@ export default function PartyGameScreen({ player, setPlayer }: PartyGameScreenPr
 
           {/* Bloque Sala Activa */}
           <div style={{ background: '#222', padding: '6px 12px', borderRadius: '6px', border: '1px solid #333', textAlign: 'center' }}>
-            <span style={{ display: 'block', fontSize: '0.7rem', color: '#aaa', uppercase: 'true' }}>SALA ACTIVA</span>
+            <span style={{ display: 'block', fontSize: '0.7rem', color: '#aaa' }}>SALA ACTIVA</span>
             <span style={{ fontSize: '1.1rem', fontWeight: 'bold', color: '#38bdf8', letterSpacing: '1px' }}>{roomCode}</span>
           </div>
 

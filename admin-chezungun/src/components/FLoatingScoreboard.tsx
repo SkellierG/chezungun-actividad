@@ -239,7 +239,7 @@ export default function FloatingScoreboard({
                 SECCIÓN: EQUIPOS (Siempre Arriba)
                --------------------------------------------------- */}
             <div style={{ background: '#161616', padding: '12px', borderRadius: '6px', marginBottom: '15px', border: '1px solid #2a2a2a' }}>
-              <span style={{ fontSize: '0.8rem', fontWeight: 'bold', color: '#a3e635', tracking: '1px', display: 'block', marginBottom: '8px' }}>🛡️ RESUMEN DE EQUIPOS</span>
+              <span style={{ fontSize: '0.8rem', fontWeight: 'bold', color: '#a3e635', display: 'block', marginBottom: '8px' }}>🛡️ RESUMEN DE EQUIPOS</span>
               <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
                 {teams.length === 0 ? (
                   <span style={{ fontSize: '0.85rem', color: '#666', fontStyle: 'italic' }}>No hay equipos registrados.</span>
