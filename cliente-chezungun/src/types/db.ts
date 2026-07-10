@@ -47,4 +47,4 @@ export const ROLE_LABELS: Record<string, string> = {
   lider: 'Líder de Equipo',
   fraile: 'Fraile',
   diplomatico: 'Diplomático'
-};
+}

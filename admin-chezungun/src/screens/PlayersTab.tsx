@@ -1,5 +1,6 @@
 import React from 'react'
 import type { GlobalPlayer, AdminParty } from '../types/db'
+import { ROLE_LABELS } from '../types/db'
 
 interface PlayersTabProps {
   fetchAllPlayers: () => Promise<void>;
@@ -78,9 +79,10 @@ export default function PlayersTab({
               const activePartyObj: any = Array.isArray(rawParty) ? rawParty[0] : rawParty
               
               const currentPartyCode = activePartyObj?.parties?.code
-              const currentRole = activePartyObj?.role || 'Sin Rol'
+              const currentRole = activePartyObj?.role || ''
               const currentTeamId = activePartyObj?.team_id || ''
               const currentTeamName = activePartyObj?.teams?.name || 'Ninguno'
+              const currentTeamColor = activePartyObj?.teams?.color || '#aaa'
               
               const isEditing = editingPlayerId === player.id
 
@@ -120,16 +122,16 @@ export default function PlayersTab({
                         hasActivePartyObj(activePartyObj) ? (
                           <div style={{ display: 'flex', flexDirection: 'column', gap: '5px', marginTop: '5px' }}>
                             
+                            {/* CORREGIDO: Opciones alineadas al 100% con los valores permitidos por db.sql */}
                             <select
                               value={editRoleInput}
                               onChange={(e) => setEditRoleInput(e.target.value)}
                               style={{ padding: '4px', backgroundColor: '#444', color: '#fff', border: '1px solid #0284c7', borderRadius: '4px', fontSize: '0.85rem' }}
                             >
-                              <option value="Jugador">Jugador Normal</option>
-                              <option value="Líder de Equipo">Líder de Equipo (Capitán)</option>
-                              <option value="Espectador">Espectador Pasivo</option>
-                              <option value="Moderador de Campo">Moderador (Dummy)</option>
-                              <option value="Especialista Técnico">Especialista (Dummy)</option>
+                              <option value="jugador">Jugador Normal</option>
+                              <option value="lider">Líder de Equipo</option>
+                              <option value="fraile">Fraile</option>
+                              <option value="diplomatico">Diplomático</option>
                             </select>
 
                             <select
@@ -155,8 +157,12 @@ export default function PlayersTab({
                         )
                       ) : (
                         <div style={{ fontSize: '0.9rem', display: 'flex', flexDirection: 'column' }}>
-                          <span style={{ color: '#fb923c' }}>Rol: {currentRole}</span>
-                          <span style={{ color: '#4ade80' }}>Equipo: {currentTeamName}</span>
+                          <span style={{ color: '#fb923c' }}>
+                            Rol: {ROLE_LABELS[currentRole] || 'Sin Rol'}
+                          </span>
+                          <span style={{ color: currentTeamColor, fontWeight: activePartyObj?.team_id ? 'bold' : 'normal' }}>
+                            Equipo: {currentTeamName}
+                          </span>
                         </div>
                       )}
                     </div>
