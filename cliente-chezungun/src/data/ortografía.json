@@ -1,0 +1,34 @@
+{
+    "rounds": [
+        {
+            "question": "¿Cuál es la forma correcta de escribir la palabra que significa 'acción de correr'?",
+            "options": [
+                "corer",
+                "correr",
+                "corer",
+                "corer"
+            ],
+            "answer": "correr"
+        },
+        {   
+            "question": "¿Cuál es la forma correcta de escribir la palabra que significa 'acción de comer'?",
+            "options": [
+                "comer",
+                "comer",
+                "comer",
+                "comer"
+            ],
+            "answer": "comer"
+        },
+        {
+            "question": "¿Cuál es la forma correcta de escribir la palabra que significa 'acción de dormir'?",
+            "options": [
+                "dormir",
+                "dormir",
+                "dormir",
+                "dormir"
+            ],
+            "answer": "dormir"
+        }
+    ]
+}

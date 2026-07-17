@@ -1,0 +1,34 @@
+{
+    "rounds": [
+        {
+            "question": "Chrawkawin esta ___ desde Chiloe",
+            "options": [
+                "norte",
+                "sur",
+                "este",
+                "oeste"
+            ],
+            "answer": "norte"
+        },
+        {
+            "question": "Chrawkawin esta ___ desde Santiago",
+            "options": [
+                "norte",
+                "sur",
+                "este",
+                "oeste"
+            ],
+            "answer": "sur"
+        },
+        {
+            "question": "Chrawkawin esta ___ desde Argentina",
+            "options": [
+                "norte",
+                "sur",
+                "este",
+                "oeste"
+            ],
+            "answer": "oeste"
+        }
+    ]
+}

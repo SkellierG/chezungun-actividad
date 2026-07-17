@@ -45,8 +45,16 @@ export default function JoinPartyScreen({ player, setPlayer }: JoinPartyScreenPr
           team_id: null,
           role: 'player', // Valor por defecto en la Base de Datos
           individual_score: 0, // Valor por defecto en la Base de Datos
-          parties: { code: party.code },
+          parties: {
+            code: party.code,
+            id: '',
+            game_stage: '',
+            game_duration_seconds: null,
+            stage_started_at: null
+          },
           teams: null // Inicia sin equipo asignado
+          ,
+          game_status: 'waiting'
         }
       })
     } else {

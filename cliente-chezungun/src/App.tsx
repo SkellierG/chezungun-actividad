@@ -6,7 +6,7 @@ import JoinPartyScreen from './screens/JoinPartyScreen'
 import PartyGameScreen from './screens/PartyGameScreen'
 import './App.css'
 
-// 1. Interfaz extendida para soportar Equipos, Roles y Puntajes de la nueva DB
+// 1. Interfaz extendida y sincronizada para evitar errores de tipado (TypeScript)
 export interface PlayerSession {
   id: string;
   name: string;
@@ -18,11 +18,18 @@ export interface PlayerSession {
     team_id: string | null;
     role: string;
     individual_score: number;
+    game_status: 'waiting' | 'playing' | 'finished'; // 👈 Sincronía de estado de interacción
     parties: {
+      id: string;
       code: string;
+      game_stage: string;                      // 👈 Sincronía del piano de fases
+      game_duration_seconds: number | null;     // 👈 Sincronía de duración (soporta null)
+      stage_started_at: string | null;          // 👈 Sincronía de hora de inicio (servidor)
     };
     teams: {
+      id: string;
       name: string;
+      color: string;
       score: number;
     } | null;
   } | null;
@@ -38,36 +45,46 @@ function App() {
       const savedCode = DeviceStorage.getItem('code', 'string') as string | undefined;
 
       if (savedCode) {
-        // 2. Consulta actualizada para traer de golpe el Rol, Puntaje Individual y datos del Equipo
+        // 2. Consulta robusta que jala las relaciones correctas en un único viaje
         const { data, error } = await supabase
           .from('code_players')
           .select(`
+            id,
             code,
+            player_id,
             players (
               id,
               name,
+              created_at,
               player_parties (
+                id,
                 party_id,
-                team_id,
                 role,
                 individual_score,
+                game_status,
                 parties (
-                  code
+                  id,
+                  code,
+                  game_stage,
+                  game_duration_seconds,
+                  stage_started_at
                 ),
                 teams (
+                  id,
                   name,
+                  color,
                   score
                 )
               )
             )
           `)
           .eq('code', savedCode)
-          .maybeSingle();
+          .maybeSingle()
 
         if (data && data.players && !error) {
           const playerData = data.players as any;
           
-          // Desestructuramos player_parties previniendo si Supabase lo devuelve como Array u Objeto
+          // En la jerarquía de Supabase, player_parties cuelga de players
           const rawParty = playerData.player_parties;
           const activeParty = Array.isArray(rawParty) ? rawParty[0] : rawParty;
 
@@ -78,7 +95,7 @@ function App() {
             player_parties: activeParty || null
           })
         } else {
-          // Si el código del almacenamiento local ya no existe en el servidor, limpiamos
+          // Si el código del almacenamiento local está corrupto o fue borrado, limpiamos
           DeviceStorage.removeItem('code')
         }
       }
@@ -90,7 +107,7 @@ function App() {
 
   if (loading) return <div className="App"><h3>Cargando juego...</h3></div>
 
-  // Monitoreo seguro de estados en consola con la nueva información disponible
+  // Monitoreo seguro en consola
   console.log('Estado completo del jugador:', JSON.stringify(player))
   if (player?.player_parties) {
     console.log('Código de Party Directo:', player.player_parties.parties.code);
@@ -101,23 +118,22 @@ function App() {
     }
   }
 
-  // Condición limpia para saber si está en sala o no
+  // Condición limpia para saber si está en una sala activa
   const isInParty = player?.player_parties !== null && player?.player_parties !== undefined;
 
-  // --- RENDERS CONDICIONALES (VISTAS AUTOMÁTICAS DESDE ROOT) ---
+  // --- RENDERS CONDICIONALES ---
 
-  // VISTA A: Registro / Dashboard de bienvenida (No hay código de sesión válido)
+  // VISTA A: Registro / Login (No hay código de sesión válido)
   if (!player) {
     return <LoginScreen setPlayer={setPlayer} />
   }
 
-  // VISTA B: Buscar Sala (Tiene cuenta pero no está enlazado a un player_parties activo)
+  // VISTA B: Buscar Sala / Unirse (Tiene cuenta pero no está enlazado a player_parties)
   if (!isInParty) {
     return <JoinPartyScreen player={player} setPlayer={setPlayer} />
   }
 
-  // VISTA C: Modo Juego Activo (Acceso directo seguro por objetos)
-  // Ahora PartyGameScreen recibirá de golpe el rol, el equipo y todos los puntajes dentro del objeto player
+  // VISTA C: Modo Juego Activo (Acceso seguro directo mediante propiedades)
   return <PartyGameScreen player={player} setPlayer={setPlayer} />
 }
 
