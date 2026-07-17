@@ -1,51 +1,40 @@
 import React, { useState, useEffect } from 'react'
-import type { PlayerSession } from '../../App'
 import { GAME_CONFIG } from '../../data/gameConfig'
 import DeviceStorage from '../../utils/localstorage'
+import { JUEGO1_ROUNDS } from '../../data/juego1Config' // 📦 Importación de la nueva configuración
 
 interface Juego1ViewProps {
-  player: PlayerSession;
-  timeLeft: number | null;
-  onGameFinished: (finalPoints: number) => void; // Notifica al orquestador maestro
+  player: any
+  timeLeft: number | null
+  onPointsUpdate?: (points: number) => void
+  onGameFinished: (finalPoints: number) => void
 }
 
-const TRIVIA_DATA = {
-  "rounds": [
-    {
-      "question": "¿Cuál es la forma correcta de escribir la palabra que significa 'acción de correr'?",
-      "options": ["corer", "correr", "corer", "corer"],
-      "answer": "correr"
-    },
-    {   
-      "question": "¿Cuál es la forma correcta de escribir la palabra que significa 'acción de comer'?",
-      "options": ["comer", "comer", "comer", "comer"],
-      "answer": "comer"
-    },
-    {
-      "question": "¿Cuál es la forma correcta de escribir la palabra que significa 'acción de dormir'?",
-      "options": ["dormir", "dormir", "dormir", "dormir"],
-      "answer": "dormir"
-    }
-  ]
-}
-
-export default function Juego1View({ player, timeLeft, onGameFinished }: Juego1ViewProps) {
+export default function Juego1View({ player, timeLeft, onPointsUpdate, onGameFinished }: Juego1ViewProps) {
   const playerId = player?.id || 'guest'
   const partyId = player?.player_parties?.party_id || 'lobby'
   
   const STORAGE_ROUND_KEY = `uno_round_${playerId}_${partyId}`
   const STORAGE_POINTS_KEY = `uno_points_${playerId}_${partyId}`
 
+  // Inicialización síncrona evaluando los límites del nuevo archivo de configuración
   const [currentRound, setCurrentRound] = useState<number>(() => {
     const saved = DeviceStorage.getItem(STORAGE_ROUND_KEY as any, 'string')
     const parsed = saved ? parseInt(saved as string, 10) : 0
-    return parsed >= TRIVIA_DATA.rounds.length ? 0 : parsed
+    return parsed >= JUEGO1_ROUNDS.length ? 0 : parsed
   })
 
   const [accumulatedPoints, setAccumulatedPoints] = useState<number>(() => {
     const saved = DeviceStorage.getItem(STORAGE_POINTS_KEY as any, 'string')
     return saved ? parseInt(saved as string, 10) : 0
   })
+
+  // Sincronizar puntos en caché con el orquestador padre al montar
+  useEffect(() => {
+    if (onPointsUpdate) {
+      onPointsUpdate(accumulatedPoints)
+    }
+  }, [])
 
   useEffect(() => {
     DeviceStorage.setItem(STORAGE_ROUND_KEY as any, currentRound.toString())
@@ -56,20 +45,26 @@ export default function Juego1View({ player, timeLeft, onGameFinished }: Juego1V
   }, [accumulatedPoints, STORAGE_POINTS_KEY])
 
   const pointsPerAnswer = GAME_CONFIG.points_per_correct_answer
-  const activeRoundData = TRIVIA_DATA.rounds[currentRound] || TRIVIA_DATA.rounds[0]
+  const activeRoundData = JUEGO1_ROUNDS[currentRound] || JUEGO1_ROUNDS[0]
 
-  const handleSelectOption = (selectedOption: string) => {
+  const handleSelectOption = (idxSelected: number) => {
     let newPoints = accumulatedPoints
-    if (selectedOption === activeRoundData.answer) {
+    
+    // Validación por índice numérico según tu nueva interfaz TriviaRound
+    if (idxSelected === activeRoundData.answer) {
       newPoints += pointsPerAnswer
       setAccumulatedPoints(newPoints)
+      
+      if (onPointsUpdate) {
+        onPointsUpdate(newPoints)
+      }
     }
 
     const nextRound = currentRound + 1
-    if (nextRound < TRIVIA_DATA.rounds.length) {
+    if (nextRound < JUEGO1_ROUNDS.length) {
       setCurrentRound(nextRound)
     } else {
-      // Limpiamos la caché del juego interno y enviamos los puntos ganados al orquestador maestro
+      // Limpieza de estados internos locales de este minijuego antes de la distribución masiva
       DeviceStorage.removeItem(STORAGE_ROUND_KEY as any)
       DeviceStorage.removeItem(STORAGE_POINTS_KEY as any)
       onGameFinished(newPoints)
@@ -79,13 +74,23 @@ export default function Juego1View({ player, timeLeft, onGameFinished }: Juego1V
   return (
     <div style={containerStyle}>
       <div style={headerStyle}>
-        <span>Pregunta {currentRound + 1} de {TRIVIA_DATA.rounds.length}</span>
-        {timeLeft !== null && <span style={{ color: timeLeft < 15 ? '#ef4444' : '#38bdf8', fontWeight: 'bold' }}>⏱️ {timeLeft}s</span>}
+        <span>Pregunta {currentRound + 1} de {JUEGO1_ROUNDS.length}</span>
+        {timeLeft !== null && (
+          <span style={{ color: timeLeft < 15 ? '#ef4444' : '#38bdf8', fontWeight: 'bold' }}>
+            ⏱️ {timeLeft}s
+          </span>
+        )}
       </div>
       <h2 style={questionStyle}>{activeRoundData.question}</h2>
       <div style={gridStyle}>
         {activeRoundData.options.map((option, idx) => (
-          <button key={idx} onClick={() => handleSelectOption(option)} style={buttonStyle}>{option}</button>
+          <button 
+            key={idx} 
+            onClick={() => handleSelectOption(idx)} 
+            style={buttonStyle}
+          >
+            {option}
+          </button>
         ))}
       </div>
     </div>

@@ -34,7 +34,6 @@ export default function AdminScreen() {
   const [editTeamInput, setEditTeamInput] = useState('')
 
   // ⏱️ ESTADOS DE PREVIEW: Capturan los borradores locales. 
-  // La duración ahora acepta number o null para fases manuales
   const [localDurations, setLocalDurations] = useState<Record<string, number | null>>({})
   const [previewStages, setPreviewStages] = useState<Record<string, string>>({})
 
@@ -148,7 +147,8 @@ export default function AdminScreen() {
     let targetSeconds = localDurations[partyId]
 
     // Forzar null si es una etapa de intermedio (para que no tenga límite de tiempo)
-    if (targetStage.startsWith('intermedio_')) {
+    const isIntermediary = targetStage.startsWith('intermedio_')
+    if (isIntermediary) {
       targetSeconds = null
     } else if (targetSeconds === undefined || targetSeconds === null) {
       targetSeconds = 60 // Default fallback para juegos si no se especifica
@@ -158,6 +158,7 @@ export default function AdminScreen() {
     const targetStartedAt = targetSeconds !== null ? new Date().toISOString() : null
 
     try {
+      // 1. Actualizar la configuración de la sala
       const { error } = await supabase
         .from('parties')
         .update({ 
@@ -168,7 +169,17 @@ export default function AdminScreen() {
         .eq('id', partyId)
 
       if (error) throw error
-      alert('¡Configuración de la partida publicada en vivo con éxito!')
+
+      // 2. CORREGIDO: Reiniciar el estado de juego de todos los jugadores de la sala.
+      // Si es un juego nuevo pasan a 'playing', si es un intermedio pasan a 'waiting'
+      const nextPlayerStatus = isIntermediary ? 'waiting' : 'playing'
+      await supabase
+        .from('player_parties')
+        .update({ game_status: nextPlayerStatus })
+        .eq('party_id', partyId)
+
+      alert('¡Configuración de la partida y estados de los jugadores actualizados en vivo!')
+      fetchAllParties()
     } catch (error) {
       console.error(error)
       alert('No se pudo publicar la configuración de fase y tiempo.')
@@ -232,6 +243,22 @@ export default function AdminScreen() {
     } catch (error) { console.error(error) }
   }
 
+  const handleUpdatePlayerScore = async (playerId: string, currentScore: number, delta: number) => {
+    try {
+      const { error } = await supabase
+        .from('player_parties')
+        .update({ individual_score: Math.max(0, currentScore + delta) }) // Protegemos que no baje de 0 puntos
+        .eq('player_id', playerId);
+
+      if (error) throw error;
+
+      // Refrescamos toda la información de salas para que impacte el Websocket en vivo
+      await fetchAllParties();
+    } catch (error) {
+      console.error("Error actualizando puntaje del jugador en Supabase:", error);
+    }
+  }
+
   const handleCreateTeam = async (partyId: string, teamName: string) => {
     await supabase.from('teams').insert([{ party_id: partyId, name: teamName, score: 0 }]); await fetchAllParties()
   }
@@ -255,7 +282,6 @@ export default function AdminScreen() {
       setLocalDurations(prev => ({ ...prev, [partyId]: null }))
     } else {
       setLocalDurations(prev => {
-        // Restaurar a un valor numérico por defecto (ej: 60s) si venía de un valor null
         const current = prev[partyId]
         return { ...prev, [partyId]: current !== null && current !== undefined ? current : 60 }
       })
@@ -278,7 +304,7 @@ export default function AdminScreen() {
           <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
             {parties.map((party) => {
               const currentStage = (party as any).game_stage || 'intermedio_1'
-              const liveDuration = (party as any).game_duration_seconds // Puede ser NULL o number
+              const liveDuration = (party as any).game_duration_seconds 
               const liveStartedAt = (party as any).stage_started_at
 
               const draftStage = previewStages[party.id] || currentStage
@@ -299,7 +325,7 @@ export default function AdminScreen() {
                   {/* Estructura Side-By-Side (Live vs Preview) */}
                   <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '15px' }}>
                     
-                    {/* 🟢 PANEL LIVE (Estado En Vivo Real del Servidor) */}
+                    {/* 🟢 PANEL LIVE */}
                     <div style={{ background: '#171717', padding: '12px', borderRadius: '6px', border: '1px solid #10b981' }}>
                       <h5 style={{ margin: '0 0 10px 0', color: '#10b981', display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.85rem', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
                         <span style={{ display: 'inline-block', width: '8px', height: '8px', borderRadius: '50%', backgroundColor: '#10b981' }}></span>
@@ -325,7 +351,7 @@ export default function AdminScreen() {
                       </div>
                     </div>
 
-                    {/* 🛠️ PANEL PREVIEW (Preparación del cambio) */}
+                    {/* 🛠️ PANEL PREVIEW */}
                     <div style={{ background: '#171717', padding: '12px', borderRadius: '6px', border: '1px solid #eab308' }}>
                       <h5 style={{ margin: '0 0 10px 0', color: '#eab308', fontSize: '0.85rem', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
                         🛠️ PREPARAR CAMBIO (Preview)
@@ -334,7 +360,7 @@ export default function AdminScreen() {
                       <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
                         <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
                           
-                          {/* Siguiente Fase (Draft Stage) */}
+                          {/* Siguiente Fase */}
                           <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', flex: '1 1 140px' }}>
                             <span style={{ fontSize: '0.75rem', color: '#888' }}>Siguiente Etapa:</span>
                             <select
@@ -353,7 +379,7 @@ export default function AdminScreen() {
                             </select>
                           </div>
 
-                          {/* Siguiente Duración (Draft Duration) */}
+                          {/* Siguiente Duración */}
                           <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', width: '100px' }}>
                             <span style={{ fontSize: '0.75rem', color: '#888' }}>Duración (seg):</span>
                             {isDraftAnIntermediary ? (
@@ -446,7 +472,21 @@ export default function AdminScreen() {
       <hr style={{ borderColor: '#444', margin: '20px 0' }} />
 
       {activeTab === 'parties' ? (
-        <PartiesTab newPartyCode={newPartyCode} setNewPartyCode={setNewPartyCode} isSubmitting={isSubmitting} handleCreateParty={handleCreateParty} fetchAllParties={fetchAllParties} loading={loading} parties={parties} handleKickPlayer={handleKickPlayer} handleCreateTeam={handleCreateTeam} handleUpdateTeam={handleUpdateTeam} handleUpdateTeamScore={handleUpdateTeamScore} handleUpdatePlayerTeam={handleUpdatePlayerTeam} />
+        <PartiesTab
+          newPartyCode={newPartyCode}
+          setNewPartyCode={setNewPartyCode}
+          isSubmitting={isSubmitting}
+          handleCreateParty={handleCreateParty}
+          fetchAllParties={fetchAllParties}
+          loading={loading}
+          parties={parties}
+          handleKickPlayer={handleKickPlayer}
+          handleCreateTeam={handleCreateTeam}
+          handleUpdateTeam={handleUpdateTeam}
+          handleUpdateTeamScore={handleUpdateTeamScore}
+          handleUpdatePlayerTeam={handleUpdatePlayerTeam}
+          handleUpdatePlayerScore={handleUpdatePlayerScore} // <-- PASAMOS LA NUEVA FUNCIÓN AQUÍ
+        />
       ) : (
         <PlayersTab fetchAllPlayers={fetchAllPlayers} loadingPlayers={loadingPlayers} allPlayers={allPlayers} editingPlayerId={editingPlayerId} setEditingPlayerId={setEditingPlayerId} editNameInput={editNameInput} setEditNameInput={setEditNameInput} editRoleInput={editRoleInput} setEditRoleInput={setEditRoleInput} editTeamInput={editTeamInput} setEditTeamInput={setEditTeamInput} parties={parties} selectedPartyForPlayer={selectedPartyForPlayer} setSelectedPartyForPlayer={setSelectedPartyForPlayer} startEditing={startEditing} handleUpdatePlayer={handleUpdatePlayer} handleDeletePlayer={handleDeletePlayer} handleKickPlayer={handleKickPlayer} handleForceJoinParty={handleForceJoinParty} />
       )}

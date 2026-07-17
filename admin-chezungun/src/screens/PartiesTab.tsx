@@ -15,6 +15,8 @@ interface PartiesTabProps {
   handleUpdateTeam: (teamId: string, name: string, color: string) => Promise<void>;
   handleUpdateTeamScore: (teamId: string, currentScore: number, delta: number) => Promise<void>;
   handleUpdatePlayerTeam: (playerId: string, teamId: string | null) => Promise<void>;
+  // NUEVA PROP: Permite al admin mutar puntajes individuales directo de la lista
+  handleUpdatePlayerScore: (playerId: string, currentScore: number, delta: number) => Promise<void>;
 }
 
 export default function PartiesTab({
@@ -29,7 +31,8 @@ export default function PartiesTab({
   handleCreateTeam,
   handleUpdateTeam,
   handleUpdateTeamScore,
-  handleUpdatePlayerTeam
+  handleUpdatePlayerTeam,
+  handleUpdatePlayerScore // Destructuramos la nueva prop
 }: PartiesTabProps) {
   // Estado para la inserción de nuevos equipos
   const [teamInputs, setTeamInputs] = useState<Record<string, string>>({})
@@ -42,6 +45,9 @@ export default function PartiesTab({
 
   // NUEVO ESTADO: Guarda el valor arbitrario tipeado por el admin, mapeado por el ID de cada equipo
   const [arbitraryInputs, setArbitraryInputs] = useState<Record<string, string>>({})
+
+  // NUEVO ESTADO JUGADORES: Guarda el valor arbitrario tipeado por el admin, mapeado por el ID de cada jugador
+  const [arbitraryPlayerInputs, setArbitraryPlayerInputs] = useState<Record<string, string>>({})
 
   const onSubmitTeam = async (e: React.FormEvent, partyId: string) => {
     e.preventDefault()
@@ -325,49 +331,167 @@ export default function PartiesTab({
                           <th style={{ padding: '8px' }}>Jugador</th>
                           <th style={{ padding: '8px' }}>Equipo (Modificar Asignación)</th>
                           <th style={{ padding: '8px' }}>Rol</th>
-                          <th style={{ padding: '8px' }}>Ptos Indiv.</th>
+                          <th style={{ padding: '8px', width: '380px' }}>Ptos Indiv. (Modificar)</th>
                           <th style={{ padding: '8px' }}>Acciones</th>
                         </tr>
                       </thead>
                       <tbody>
-                        {members.map((member, index) => (
-                          <tr key={index} style={{ borderBottom: '1px solid #2a2a2a' }}>
-                            <td style={{ padding: '8px', fontWeight: '500' }}>{member.players?.name || 'Anónimo'}</td>
-                            
-                            <td style={{ padding: '8px' }}>
-                              <select
-                                value={member.teams?.id || ''}
-                                onChange={(e) => member.players && handleUpdatePlayerTeam(member.players.id, e.target.value || null)}
-                                style={{ 
-                                  padding: '4px 8px', 
-                                  backgroundColor: '#262626', 
-                                  color: member.teams?.color || '#fff', 
-                                  border: '1px solid #444', 
-                                  borderRadius: '4px', 
-                                  fontSize: '0.85rem',
-                                  fontWeight: member.teams?.name ? 'bold' : 'normal'
-                                }}
-                              >
-                                <option value="" style={{ color: '#aaa' }}>-- Ninguno (Sin Equipo) --</option>
-                                {party.teams && party.teams.map((t) => (
-                                  <option key={t.id} value={t.id} style={{ color: t.color, fontWeight: 'bold' }}>
-                                    {t.name}
-                                  </option>
-                                ))}
-                              </select>
-                            </td>
+                        {members.map((member, index) => {
+                          const playerId = member.players?.id;
 
-                            <td style={{ padding: '8px', color: '#fb923c' }}>
-                              {ROLE_LABELS[member.role || ''] || member.role || 'Sin Rol'}
-                            </td>
-                            <td style={{ padding: '8px', textAlign: 'center' }}>{member.individual_score}</td>
-                            <td style={{ padding: '8px' }}>
-                              <button onClick={() => member.players && handleKickPlayer(member.players.id)} style={{ padding: '4px 8px', background: '#eab308', border: 'none', color: '#000', borderRadius: '4px', cursor: 'pointer', fontSize: '0.8rem', fontWeight: 'bold' }}>
-                                🚪 Echar
-                              </button>
-                            </td>
-                          </tr>
-                        ))}
+                          return (
+                            <tr key={index} style={{ borderBottom: '1px solid #2a2a2a' }}>
+                              <td style={{ padding: '8px', fontWeight: '500' }}>{member.players?.name || 'Anónimo'}</td>
+                              
+                              <td style={{ padding: '8px' }}>
+                                <select
+                                  value={member.teams?.id || ''}
+                                  onChange={(e) => member.players && handleUpdatePlayerTeam(member.players.id, e.target.value || null)}
+                                  style={{ 
+                                    padding: '4px 8px', 
+                                    backgroundColor: '#262626', 
+                                    color: member.teams?.color || '#fff', 
+                                    border: '1px solid #444', 
+                                    borderRadius: '4px', 
+                                    fontSize: '0.85rem',
+                                    fontWeight: member.teams?.name ? 'bold' : 'normal'
+                                  }}
+                                >
+                                  <option value="" style={{ color: '#aaa' }}>-- Ninguno (Sin Equipo) --</option>
+                                  {party.teams && party.teams.map((t) => (
+                                    <option key={t.id} value={t.id} style={{ color: t.color, fontWeight: 'bold' }}>
+                                      {t.name}
+                                    </option>
+                                  ))}
+                                </select>
+                              </td>
+
+                              <td style={{ padding: '8px', color: '#fb923c' }}>
+                                {ROLE_LABELS[member.role || ''] || member.role || 'Sin Rol'}
+                              </td>
+
+                              {/* PANEL DE CONTROL DE PUNTAJE INDIVIDUAL COMPACTO */}
+                              <td style={{ padding: '8px' }}>
+                                {playerId ? (
+                                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                    
+                                    {/* Restas Rápidas */}
+                                    <div style={{ display: 'flex', gap: '1px', background: '#2d1414', padding: '1px', borderRadius: '4px' }}>
+                                      <button 
+                                        onClick={() => handleUpdatePlayerScore(playerId, member.individual_score, -10)}
+                                        style={{ padding: '2px 5px', background: '#7f1d1d', border: 'none', color: '#fca5a5', borderRadius: '2px 0 0 2px', cursor: 'pointer', fontWeight: 'bold', fontSize: '0.7rem' }}
+                                        title="Restar 10 puntos"
+                                      >
+                                        -10
+                                      </button>
+                                      <button 
+                                        onClick={() => handleUpdatePlayerScore(playerId, member.individual_score, -5)}
+                                        style={{ padding: '2px 5px', background: '#991b1b', border: 'none', color: '#fca5a5', borderRadius: '0', cursor: 'pointer', fontWeight: 'bold', fontSize: '0.7rem' }}
+                                        title="Restar 5 puntos"
+                                      >
+                                        -5
+                                      </button>
+                                      <button 
+                                        onClick={() => handleUpdatePlayerScore(playerId, member.individual_score, -1)}
+                                        style={{ padding: '2px 5px', background: '#b91c1c', border: 'none', color: '#fff', borderRadius: '0 2px 2px 0', cursor: 'pointer', fontWeight: 'bold', fontSize: '0.7rem' }}
+                                        title="Restar 1 punto"
+                                      >
+                                        -1
+                                      </button>
+                                    </div>
+
+                                    {/* Monitor de Puntos */}
+                                    <span style={{ fontSize: '0.8rem', minWidth: '52px', textAlign: 'center', fontWeight: 'bold', background: '#111', padding: '3px 6px', borderRadius: '4px', border: '1px solid #2a2a2a' }}>
+                                      {member.individual_score} pts
+                                    </span>
+
+                                    {/* Sumas Rápidas */}
+                                    <div style={{ display: 'flex', gap: '1px', background: '#142d19', padding: '1px', borderRadius: '4px' }}>
+                                      <button 
+                                        onClick={() => handleUpdatePlayerScore(playerId, member.individual_score, 1)}
+                                        style={{ padding: '2px 5px', background: '#16a34a', border: 'none', color: '#fff', borderRadius: '2px 0 0 2px', cursor: 'pointer', fontWeight: 'bold', fontSize: '0.7rem' }}
+                                        title="Sumar 1 punto"
+                                      >
+                                        +1
+                                      </button>
+                                      <button 
+                                        onClick={() => handleUpdatePlayerScore(playerId, member.individual_score, 5)}
+                                        style={{ padding: '2px 5px', background: '#15803d', border: 'none', color: '#bbf7d0', borderRadius: '0', cursor: 'pointer', fontWeight: 'bold', fontSize: '0.7rem' }}
+                                        title="Sumar 5 puntos"
+                                      >
+                                        +5
+                                      </button>
+                                      <button 
+                                        onClick={() => handleUpdatePlayerScore(playerId, member.individual_score, 10)}
+                                        style={{ padding: '2px 5px', background: '#166534', border: 'none', color: '#bbf7d0', borderRadius: '0 2px 2px 0', cursor: 'pointer', fontWeight: 'bold', fontSize: '0.7rem' }}
+                                        title="Sumar 10 puntos"
+                                      >
+                                        +10
+                                      </button>
+                                    </div>
+
+                                    {/* Modificador Arbitrario */}
+                                    <div style={{ display: 'flex', alignItems: 'center', background: '#262626', borderRadius: '4px', border: '1px solid #444', padding: '1px' }}>
+                                      <input
+                                        type="number"
+                                        placeholder="Cant."
+                                        value={arbitraryPlayerInputs[playerId] || ''}
+                                        onChange={(e) => setArbitraryPlayerInputs({ ...arbitraryPlayerInputs, [playerId]: e.target.value })}
+                                        style={{ 
+                                          width: '40px', 
+                                          background: 'transparent', 
+                                          border: 'none', 
+                                          color: '#fff', 
+                                          fontSize: '0.75rem', 
+                                          padding: '1px 2px',
+                                          textAlign: 'center',
+                                          outline: 'none'
+                                        }}
+                                      />
+                                      <button
+                                        onClick={() => {
+                                          const customValue = Math.abs(parseInt(arbitraryPlayerInputs[playerId] || '0', 10));
+                                          if (customValue > 0) {
+                                            handleUpdatePlayerScore(playerId, member.individual_score, customValue);
+                                            setArbitraryPlayerInputs({ ...arbitraryPlayerInputs, [playerId]: '' });
+                                          }
+                                        }}
+                                        disabled={!arbitraryPlayerInputs[playerId] || parseInt(arbitraryPlayerInputs[playerId], 10) === 0}
+                                        style={{ padding: '2px 4px', background: '#0284c7', border: 'none', color: '#fff', borderRadius: '2px', cursor: 'pointer', fontSize: '0.7rem', fontWeight: 'bold', marginRight: '1px' }}
+                                        title="Sumar cantidad arbitraria"
+                                      >
+                                        +
+                                      </button>
+                                      <button
+                                        onClick={() => {
+                                          const customValue = Math.abs(parseInt(arbitraryPlayerInputs[playerId] || '0', 10));
+                                          if (customValue > 0) {
+                                            handleUpdatePlayerScore(playerId, member.individual_score, -customValue);
+                                            setArbitraryPlayerInputs({ ...arbitraryPlayerInputs, [playerId]: '' });
+                                          }
+                                        }}
+                                        disabled={!arbitraryPlayerInputs[playerId] || parseInt(arbitraryPlayerInputs[playerId], 10) === 0}
+                                        style={{ padding: '2px 4px', background: '#ea580c', border: 'none', color: '#fff', borderRadius: '2px', cursor: 'pointer', fontSize: '0.7rem', fontWeight: 'bold' }}
+                                        title="Restar cantidad arbitraria"
+                                      >
+                                        -
+                                      </button>
+                                    </div>
+
+                                  </div>
+                                ) : (
+                                  <span>{member.individual_score} pts</span>
+                                )}
+                              </td>
+
+                              <td style={{ padding: '8px' }}>
+                                <button onClick={() => member.players && handleKickPlayer(member.players.id)} style={{ padding: '4px 8px', background: '#eab308', border: 'none', color: '#000', borderRadius: '4px', cursor: 'pointer', fontSize: '0.8rem', fontWeight: 'bold' }}>
+                                  🚪 Echar
+                                </button>
+                              </td>
+                            </tr>
+                          )
+                        })}
                       </tbody>
                     </table>
                   )}

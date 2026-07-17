@@ -23,11 +23,26 @@ export default function PointDistributionView({
 }: PointDistributionViewProps) {
   const [isSaving, setIsSaving] = useState(false)
 
-  // Sincronizar el slider localmente para que no se mueva al refrescar
+  // 🛡️ CONTROL ULTRA-SEGURO EN LA INICIALIZACIÓN:
+  // Evitamos inicializar el slider con un número mayor a lo que realmente se obtuvo hoy.
   const [pointsToTeam, setPointsToTeam] = useState<number>(() => {
     const savedSlider = DeviceStorage.getItem(sliderStorageKey as any, 'string')
-    return savedSlider ? parseInt(savedSlider as string, 10) : Math.floor(accumulatedPoints / 2)
+    const parsed = savedSlider ? parseInt(savedSlider as string, 10) : Math.floor(accumulatedPoints / 2)
+    
+    // Si la caché tiene basura o un valor mayor al acumulado real, lo forzamos a ser el acumulado o la mitad
+    if (isNaN(parsed) || parsed > accumulatedPoints || parsed < 0) {
+      return Math.max(0, Math.floor(accumulatedPoints / 2))
+    }
+    return parsed
   })
+
+  // SEGURIDAD ACTIVA: Si por alguna razón accumulatedPoints cambia o se actualiza tarde,
+  // el slider baja inmediatamente su valor para no superar el límite.
+  useEffect(() => {
+    if (pointsToTeam > accumulatedPoints) {
+      setPointsToTeam(accumulatedPoints)
+    }
+  }, [accumulatedPoints, pointsToTeam])
 
   useEffect(() => {
     DeviceStorage.setItem(sliderStorageKey as any, pointsToTeam.toString())
@@ -36,11 +51,14 @@ export default function PointDistributionView({
   const role = player?.player_parties?.role || 'jugador'
   const config = GAME_CONFIG.role_multipliers[role as keyof typeof GAME_CONFIG.role_multipliers] || GAME_CONFIG.role_multipliers.jugador
 
-  const pointsToKeep = accumulatedPoints - pointsToTeam
-  const finalTeamPoints = Math.round(pointsToTeam * config.to_team)
-  const finalIndividualPoints = Math.round(pointsToKeep * config.to_individual)
+  // 🛡️ MATEMÁTICA BLINDADA CON Math.max(0, ...):
+  // Aunque ocurra un lag extremo, "pointsToKeep" jamás será menor a cero.
+  const pointsToKeep = Math.max(0, accumulatedPoints - pointsToTeam)
+  const finalTeamPoints = Math.max(0, Math.round(pointsToTeam * config.to_team))
+  const finalIndividualPoints = Math.max(0, Math.round(pointsToKeep * config.to_individual))
 
   const handleConfirmDistribution = async () => {
+    if (isSaving) return // Bloqueo de doble clic accidental
     setIsSaving(true)
     try {
       const activeParty = player.player_parties
@@ -48,18 +66,18 @@ export default function PointDistributionView({
 
       const updatedIndividualScore = (activeParty.individual_score ?? 0) + finalIndividualPoints
 
-      // 1. Escribir estado 'finished' e individual_score acumulado en player_parties
+      // 1. Escribir estado 'finished' filtrando correctamente por player_id
       const { error: partyError } = await supabase
         .from('player_parties')
         .update({ 
           game_status: 'finished',
           individual_score: updatedIndividualScore
         })
-        .eq('id', activeParty.party_id)
+        .eq('player_id', player.id)
 
       if (partyError) throw partyError
 
-      // 2. Sumar puntos colectivos a la tabla teams
+      // 2. Sumar puntos colectivos a la tabla teams (solo si el envío es mayor a cero)
       const teamId = activeParty.team_id || (activeParty.teams as any)?.id
       if (teamId && finalTeamPoints > 0) {
         const { data: teamData, error: fetchTeamError } = await supabase
@@ -77,28 +95,27 @@ export default function PointDistributionView({
         }
       }
 
-      // 3. Ejecutar callbacks del juego padre para limpiar estados locales
+      // 3. Limpiar almacenamiento local de manera limpia
       onCleanLocalStorage()
       onSuccess()
 
-      // 4. Actualizar el estado maestro global de la sesión
-      setTimeout(() => {
-        setPlayer((prev) => {
-          if (!prev || !prev.player_parties) return prev
-          return {
-            ...prev,
-            player_parties: {
-              ...prev.player_parties,
-              game_status: 'finished',
-              individual_score: updatedIndividualScore
-            }
+      // 4. Actualizar sesión global
+      setPlayer((prev) => {
+        if (!prev || !prev.player_parties) return prev
+        return {
+          ...prev,
+          player_parties: {
+            ...prev.player_parties,
+            game_status: 'finished',
+            individual_score: updatedIndividualScore
           }
-        })
-      }, 1500)
+        }
+      })
 
     } catch (error) {
-      console.error('Error crítico al procesar la distribución unificada:', error)
+      console.error('Error crítico al procesar la distribución:', error)
       alert('Hubo un problema guardando tu distribución de puntos.')
+    } finally {
       setIsSaving(false)
     }
   }

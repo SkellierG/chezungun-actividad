@@ -5,23 +5,24 @@ import type { PlayerSession } from '../../App'
 import DeviceStorage from '../../utils/localstorage'
 
 interface Juego2ViewProps {
-  player: PlayerSession
+  player: any
   timeLeft: number | null
-  onGameFinished: (finalPoints: number) => void; // Notifica al orquestador maestro
+  onPointsUpdate?: (points: number) => void // <--- Aceptada correctamente
+  onGameFinished: (finalPoints: number) => void
 }
 
 const HUILLICHE_DIRECTIONS = [
-  { name: 'Puel (Este)', minAngle: 337.5, maxAngle: 22.5 },
-  { name: 'Pikun Puel (Nor-Este)', minAngle: 22.5, maxAngle: 67.5 },
-  { name: 'Pikun (Norte)', minAngle: 67.5, maxAngle: 112.5 },
-  { name: 'Pikun Willi (Nor-Sur)', minAngle: 112.5, maxAngle: 157.5 },
-  { name: 'Willi (Sur)', minAngle: 157.5, maxAngle: 202.5 },
-  { name: 'Willi Lafken (Sur-Oeste)', minAngle: 202.5, maxAngle: 247.5 },
-  { name: 'Lafken (Oeste)', minAngle: 247.5, maxAngle: 292.5 },
-  { name: 'Puel Lafken (Nor-Oeste)', minAngle: 292.5, maxAngle: 337.5 },
+  { name: 'Puel', minAngle: 337.5, maxAngle: 22.5 },
+  { name: 'Willi Puel', minAngle: 22.5, maxAngle: 67.5 },
+  { name: 'Willi', minAngle: 67.5, maxAngle: 112.5 },
+  { name: 'Willi Lafken', minAngle: 112.5, maxAngle: 157.5 },
+  { name: 'Lafken', minAngle: 157.5, maxAngle: 202.5 },
+  { name: 'Pikun Lafken', minAngle: 202.5, maxAngle: 247.5 },
+  { name: 'Pikun', minAngle: 247.5, maxAngle: 292.5 },
+  { name: 'Pikun Puel', minAngle: 292.5, maxAngle: 337.5 },
 ]
 
-export default function Juego2View({ player, timeLeft, onGameFinished }: Juego2ViewProps) {
+export default function Juego2View({ player, timeLeft, onPointsUpdate, onGameFinished }: Juego2ViewProps) {
   const playerId = player?.id || 'guest'
   const partyId = player?.player_parties?.party_id || 'lobby'
 
@@ -40,12 +41,19 @@ export default function Juego2View({ player, timeLeft, onGameFinished }: Juego2V
   })
 
   const [angle, setAngle] = useState(0)
-  const [currentDir, setCurrentDir] = useState('Puel (Este)')
+  const [currentDir, setCurrentDir] = useState('Puel')
   const [isRotating, setIsRotating] = useState(false)
   const [statusMsg, setStatusMsg] = useState('')
 
   const compassRef = useRef<HTMLDivElement>(null)
   const currentRound = JUEGO2_ROUNDS[currentRoundIndex] || JUEGO2_ROUNDS[0]
+
+  // Sincronizar estado inicial de puntos con el padre para evitar pérdidas en un refresco
+  useEffect(() => {
+    if (onPointsUpdate) {
+      onPointsUpdate(accumulatedPoints)
+    }
+  }, [])
 
   useEffect(() => {
     DeviceStorage.setItem(STORAGE_ROUND_KEY as any, currentRoundIndex.toString())
@@ -104,6 +112,12 @@ export default function Juego2View({ player, timeLeft, onGameFinished }: Juego2V
       const newPoints = accumulatedPoints + pointsPerAnswer
       setAccumulatedPoints(newPoints)
       setStatusMsg(`¡Feyentun! (¡Correcto!) +${pointsPerAnswer} pts`)
+
+      // Notificamos inmediatamente al padre para asegurar el guardado dinámico
+      if (onPointsUpdate) {
+        onPointsUpdate(newPoints)
+      }
+
       const nextRound = currentRoundIndex + 1
 
       if (nextRound < JUEGO2_ROUNDS.length) {
@@ -133,10 +147,10 @@ export default function Juego2View({ player, timeLeft, onGameFinished }: Juego2V
       </div>
 
       <div style={{ position: 'relative', width: '230px', height: '250px', margin: '20px auto', userSelect: 'none' }}>
-        <div style={{ position: 'absolute', top: '5px', left: '50%', transform: 'translateX(-50%)', fontSize: '0.8rem', fontWeight: 'bold', color: '#ef4444', pointerEvents: 'none', zIndex: 5 }}>PUEL (E)</div>
-        <div style={{ position: 'absolute', bottom: '5px', left: '50%', transform: 'translateX(-50%)', fontSize: '0.8rem', fontWeight: 'bold', pointerEvents: 'none', zIndex: 5 }}>WILLI (S)</div>
-        <div style={{ position: 'absolute', left: '5px', top: '50%', transform: 'translateY(-50%)', fontSize: '0.8rem', fontWeight: 'bold', pointerEvents: 'none', zIndex: 5 }}>LAFKEN (O)</div>
-        <div style={{ position: 'absolute', right: '5px', top: '50%', transform: 'translateY(-50%)', fontSize: '0.8rem', fontWeight: 'bold', pointerEvents: 'none', zIndex: 5 }}>PIKUN (N)</div>
+        <div style={{ position: 'absolute', top: '5px', left: '50%', transform: 'translateX(-50%)', fontSize: '0.8rem', fontWeight: 'bold', color: '#ef4444', pointerEvents: 'none', zIndex: 5 }}>PUEL</div>
+        <div style={{ position: 'absolute', bottom: '5px', left: '50%', transform: 'translateX(-50%)', fontSize: '0.8rem', fontWeight: 'bold', color: '#ffffff', pointerEvents: 'none', zIndex: 5 }}>LAFKEN</div>
+        <div style={{ position: 'absolute', left: '5px', top: '50%', transform: 'translateY(-50%)', fontSize: '0.8rem', fontWeight: 'bold', color: '#ffffff', pointerEvents: 'none', zIndex: 5 }}>PIKUN</div>
+        <div style={{ position: 'absolute', right: '5px', top: '50%', transform: 'translateY(-50%)', fontSize: '0.8rem', fontWeight: 'bold', color: '#ffffff', pointerEvents: 'none', zIndex: 5 }}>WILLI</div>
 
         <div
           ref={compassRef}

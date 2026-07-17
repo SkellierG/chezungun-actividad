@@ -122,15 +122,18 @@ export default function PlayersTab({
                         hasActivePartyObj(activePartyObj) ? (
                           <div style={{ display: 'flex', flexDirection: 'column', gap: '5px', marginTop: '5px' }}>
                             
-                            {/* CORREGIDO: Opciones alineadas al 100% con los valores permitidos por db.sql */}
+                            {/* SOLUCIÓN: Sincronización total con la restricción chk_allowed_roles en minúsculas */}
                             <select
                               value={editRoleInput}
                               onChange={(e) => setEditRoleInput(e.target.value)}
                               style={{ padding: '4px', backgroundColor: '#444', color: '#fff', border: '1px solid #0284c7', borderRadius: '4px', fontSize: '0.85rem' }}
                             >
                               <option value="jugador">Jugador Normal</option>
-                              <option value="lider">Líder de Equipo</option>
+                              <option value="lonko">Lonko</option>
+                              <option value="capitan">Capitán</option>
                               <option value="fraile">Fraile</option>
+                              <option value="winka">Winka</option>
+                              <option value="indio">Indio</option>
                               <option value="diplomatico">Diplomático</option>
                             </select>
 
