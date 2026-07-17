@@ -10,7 +10,7 @@ import Juego2View from './game/Juego2View'
 import Juego3View from './game/Juego3View'
 import TimeUpWaitingView from './game/TimeUpWaitingView'
 import PointDistributionView from './game/PointDistributionView'
-import FraileBook from '../components/FraileBook' // Asegúrate de ajustar la ruta correcta
+import FraileBook from '../components/FraileBook' 
 
 interface PartyGameScreenProps {
   player: PlayerSession
@@ -103,12 +103,11 @@ export default function PartyGameScreen({ player, setPlayer }: PartyGameScreenPr
 
   const [isTimeUp, setIsTimeUp] = useState<boolean>(() => calculateRemainingTime().expired)
   const [timeLeft, setTimeLeft] = useState<number | null>(() => calculateRemainingTime().remaining)
-  const [prevStage, setPrevGameStage] = useState<string>(gameStage)
   const [liveGamePoints, setLiveGamePoints] = useState<number>(0);
   const [hasTriggeredDistribution, setHasTriggeredDistribution] = useState<boolean>(false)
 
-  if (gameStage !== prevStage) {
-    setPrevGameStage(gameStage)
+  // 🔄 EFECTO DE CAMBIO DE ETAPA IMPEDIBLE (Removido del cuerpo del render para evitar condiciones de carrera)
+  useEffect(() => {
     const { remaining, expired } = calculateRemainingTime()
     setTimeLeft(remaining)
     setIsTimeUp(expired)
@@ -118,12 +117,11 @@ export default function PartyGameScreen({ player, setPlayer }: PartyGameScreenPr
     DeviceStorage.removeItem(STORAGE_PREFIX_KEY as any)
     DeviceStorage.removeItem(storageTimerKey as any)
     
-    // RESET DE CONTROL DE ENVIOS
     setDistributionState('playing')
     setPointsToDistribute(0)
     setLiveGamePoints(0)
-    setHasTriggeredDistribution(false) // <--- ¡Vital aquí!
-  }
+    setHasTriggeredDistribution(false)
+  }, [gameStage]) // Se ejecuta de forma segura y limpia solo cuando muta el gameStage
 
   // Persistir cambios de distribución inmediatamente para blindar contra refrescos
   useEffect(() => {
@@ -191,15 +189,12 @@ export default function PartyGameScreen({ player, setPlayer }: PartyGameScreenPr
             screen_should_show: 'finished'
           })
 
-          // 🛡️ INTERCEPCIÓN SILENCIOSA: Si el tiempo expiró y no hay puntos (0)
           if (liveGamePoints <= 0) {
-            // Marcamos el juego terminado en BD de inmediato sin molestar al usuario con el popup
             supabase
               .from('player_parties')
               .update({ game_status: 'finished' })
               .eq('player_id', player.id)
               .then(() => {
-                // Sincronizamos la UI del cliente de manera local
                 setPlayer((prev) => {
                   if (!prev || !prev.player_parties) return prev
                   return {
@@ -213,9 +208,8 @@ export default function PartyGameScreen({ player, setPlayer }: PartyGameScreenPr
               })
             
             cleanOrchestratorStorage()
-            setDistributionState('success') // Va directo a TimeUpWaitingView
+            setDistributionState('success') 
           } else {
-            // Si sí tiene puntos, gatillamos la distribución normal
             setPointsToDistribute(liveGamePoints) 
             setSliderPrefix(gameStage === 'juego_1' ? 'uno' : 'dos')
             setDistributionState('distributing')
@@ -241,7 +235,7 @@ export default function PartyGameScreen({ player, setPlayer }: PartyGameScreenPr
         if (timerInterval) clearInterval(timerInterval)
       }
     }
-  }, [gameStage, serverDuration, stageStartedAt, activeParty?.party_id, player.id, storageTimerKey])
+  }, [gameStage, serverDuration, stageStartedAt, activeParty?.party_id, player.id, storageTimerKey, liveGamePoints])
     
   useEffect(() => {
     if (!activeParty?.party_id) return
@@ -254,24 +248,12 @@ export default function PartyGameScreen({ player, setPlayer }: PartyGameScreenPr
         (payload) => {
           const updated = payload.new as { game_stage: string; game_duration_seconds: number | null; stage_started_at: string | null }
           
-          // CORREGIDO: Al publicar una nueva fase de juego, limpiamos forzosamente los rastros antiguos en LocalStorage
-          const isNewGame = updated.game_stage !== gameStage
-          if (isNewGame) {
-            DeviceStorage.removeItem(STORAGE_STATE_KEY as any)
-            DeviceStorage.removeItem(STORAGE_POINTS_KEY as any)
-            DeviceStorage.removeItem(STORAGE_PREFIX_KEY as any)
-            DeviceStorage.removeItem(storageTimerKey as any)
-            setDistributionState('playing')
-            setPointsToDistribute(0)
-          }
-
           setPlayer((prev) => {
             if (!prev || !prev.player_parties) return prev
             return {
               ...prev,
               player_parties: {
                 ...prev.player_parties,
-                // Si es un juego nuevo, pasamos a 'playing', si es intermedio a 'waiting'
                 game_status: updated.game_stage.startsWith('juego_') ? 'playing' : 'waiting', 
                 parties: {
                   ...prev.player_parties.parties,
@@ -289,7 +271,7 @@ export default function PartyGameScreen({ player, setPlayer }: PartyGameScreenPr
     return () => {
       supabase.removeChannel(channel)
     }
-  }, [activeParty?.party_id, gameStage, setPlayer, storageTimerKey, STORAGE_STATE_KEY, STORAGE_POINTS_KEY, STORAGE_PREFIX_KEY])
+  }, [activeParty?.party_id, setPlayer])
 
   const handleLeaveParty = async () => {
     if (!player) return
@@ -302,12 +284,10 @@ export default function PartyGameScreen({ player, setPlayer }: PartyGameScreenPr
     setPlayer({ ...player, player_parties: null })
   }
 
-  // 🎯 Callback unificado activado por los juegos hijos cuando el usuario completa las rondas de forma natural
   const handleTriggerDistribution = (finalPoints: number, gamePrefix: string) => {
     if (hasTriggeredDistribution) return 
     setHasTriggeredDistribution(true)
     
-    // 🛡️ INTERCEPCIÓN SILENCIOSA: Si terminó todas las preguntas pero tiene 0 puntos
     if (finalPoints <= 0) {
       supabase
         .from('player_parties')
@@ -327,9 +307,8 @@ export default function PartyGameScreen({ player, setPlayer }: PartyGameScreenPr
         })
       
       cleanOrchestratorStorage()
-      setDistributionState('success') // Salta directo a la pantalla de espera
+      setDistributionState('success') 
     } else {
-      // Si tiene puntos, se abre el popup selector
       setPointsToDistribute(finalPoints)
       setSliderPrefix(gamePrefix)
       setDistributionState('distributing')
@@ -342,13 +321,12 @@ export default function PartyGameScreen({ player, setPlayer }: PartyGameScreenPr
     DeviceStorage.removeItem(STORAGE_PREFIX_KEY as any)
   }
 
-  // 🧱 Enrutador Modular Estático de Vistas de Juegos
   const renderActiveGamePage = () => {
     if (gameStage === 'juego_1') {
       return <Juego1View 
         player={player} 
         timeLeft={timeLeft} 
-        onPointsUpdate={setLiveGamePoints} // <--- Monitoreo constante
+        onPointsUpdate={setLiveGamePoints} 
         onGameFinished={(pts) => handleTriggerDistribution(pts, 'uno')}
       />
     }
@@ -356,7 +334,7 @@ export default function PartyGameScreen({ player, setPlayer }: PartyGameScreenPr
       return <Juego2View 
         player={player} 
         timeLeft={timeLeft} 
-        onPointsUpdate={setLiveGamePoints} // <--- Monitoreo constante
+        onPointsUpdate={setLiveGamePoints} 
         onGameFinished={(pts) => handleTriggerDistribution(pts, 'dos')}
       />
     }
@@ -364,7 +342,7 @@ export default function PartyGameScreen({ player, setPlayer }: PartyGameScreenPr
       return <Juego3View 
         player={player} 
         timeLeft={timeLeft} 
-        onPointsUpdate={setLiveGamePoints} // <--- Monitoreo constante
+        onPointsUpdate={setLiveGamePoints} 
         onGameFinished={(pts) => handleTriggerDistribution(pts, 'tres')}
       />
     return null
@@ -423,7 +401,6 @@ export default function PartyGameScreen({ player, setPlayer }: PartyGameScreenPr
         {gameStage.startsWith('juego_') ? (
           <div style={{ marginTop: '20px' }}>
             
-            {/* 🛡️ INTERCEPCIÓN ABSOLUTA: Si está distribuyendo, NO se quita de la pantalla pase lo que pase */}
             {distributionState === 'distributing' ? (
               <PointDistributionView
                 player={player}
@@ -458,6 +435,7 @@ export default function PartyGameScreen({ player, setPlayer }: PartyGameScreenPr
       </main>
 
       <FloatingScoreboard currentPartyId={activeParty?.party_id} clientPlayerId={player.id} />
+      
       {/* 📖 BOTÓN FLOTANTE Y PANEL EXCLUSIVO DEL FRAILE */}
       {rawRole === 'fraile' && (
         <>
@@ -466,7 +444,7 @@ export default function PartyGameScreen({ player, setPlayer }: PartyGameScreenPr
             style={{
               position: 'fixed',
               bottom: '20px',
-              left: '20px', // Lo tiramos al lado izquierdo para que no choque con el Scoreboard
+              left: '20px', 
               backgroundColor: '#8c6d53',
               color: '#2c221e',
               border: '3px solid #2c221e',
@@ -485,10 +463,9 @@ export default function PartyGameScreen({ player, setPlayer }: PartyGameScreenPr
             onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = '#dfb76c')}
             onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = '#8c6d53')}
           >
-            📖 Ver Grimorio Místico
+            📖 Ver Atlas
           </button>
 
-          {/* Modal del Libro */}
           <FraileBook 
             isOpen={isFraileBookOpen} 
             onClose={() => setIsFraileBookOpen(false)} 

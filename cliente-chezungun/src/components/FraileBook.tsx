@@ -61,7 +61,6 @@ export default function FraileBook({ isOpen, onClose }: FraileBookProps) {
         updatedItems.splice(insertAt, 0, {
           che_zungun: randomNonsense,
           espanol: "",
-          isNonsense: true
         })
       }
 
